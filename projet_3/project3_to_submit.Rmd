@@ -48,7 +48,7 @@ print_movie_titles <- function(result) {
 base_url <- "https://api.themoviedb.org/3/search/movie"
 
 
-api_key <- "197aac93c3e105765e64e0d49c5faad2"
+api_key <- ""
 
 queries <- list(
   "highest_grossing_dramas_2010" = list(query = "drama", year = "2010"),
