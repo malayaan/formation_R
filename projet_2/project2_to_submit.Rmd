@@ -1,0 +1,210 @@
+---
+title: "FDS Final Project: Report #"    
+output: html_document
+---
+
+```{r}
+library(httr)
+library(RSQLite)
+library(purrr)
+library(dplyr)
+library(tidyr)
+library(lubridate)
+library(ggplot2)
+library(DBI)
+library(janitor)
+library(stringr)
+library(scales)
+library(tidygeocoder)
+library(leaflet)
+library(infer)
+library(ggmap)
+library(kableExtra)
+```
+
+```{r}
+sessionInfo()
+```
+
+```{r message=FALSE, warning=FALSE}
+
+zh_politicians <- "C:/Users/CHSAVOYEM/OneDrive - Tetra Pak/Documents/EPFL/project-fds-c1-s26-6070-3439/Report_2/zh_politicians.db"
+
+
+con <- dbConnect(RSQLite::SQLite(), dbname = zh_politicians)
+
+zh_politicians <- dbConnect(RSQLite::SQLite(), "zh_politicians.db")
+
+active_mandates <- MANDATES %>%
+  filter(YearStart <= year_max && YearEnd >= year_min) %>%
+  group_by(YearStart, Assembly) %>%
+  tally()
+```
+
+Part 1: 
+
+```{r}
+active_mandates <- MANDATES %>%
+  filter(YearStart <= year_max && YearEnd >= year_min) %>%
+  group_by(YearStart, Assembly) %>%
+  tally()
+
+ggplot(active_mandates, aes(x = YearStart, y = n, color = Assembly)) +
+  geom_line() +
+  labs(title = "Number of People with Active Mandates Over the Years",
+       x = "Year",
+       y = "Number of People") +
+  theme_minimal()
+```
+
+Part 2: 
+
+```{r}
+active_mandates_gender <- MANDATES %>%
+  filter(YearStart <= year_max && YearEnd >= year_min) %>%
+  group_by(YearStart, Assembly, Gender) %>%
+  tally()
+
+ggplot(active_mandates_gender, aes(x = YearStart, y = n, color = Gender)) +
+  geom_line() +
+  facet_wrap(~Assembly, scales = "free_y") +
+  labs(title = "Number of People with Active Mandates Over the Years (by Gender and Assembly)",
+       x = "Year",
+       y = "Number of People") +
+  theme_minimal()
+```
+
+
+Part 3:
+
+```{r}
+data_2000 <- MANDATES %>%
+  filter(YearStart <= 2000 && YearEnd >= 2000)
+
+party_proportions <- data_2000 %>%
+  group_by(Assembly, Party) %>%
+  summarise(Proportion = n() / nrow(data_2000))
+
+
+ggplot(party_proportions, aes(x = 1, y = Proportion, fill = Party)) +
+  geom_bar(stat = "identity") +
+  coord_polar(theta = "y") +
+  facet_wrap(~Assembly) +
+  labs(title = "Proportion of Elected Politicians by Party in 2000 (by Assembly)",
+       x = NULL,
+       y = NULL) +
+  theme_minimal()
+
+
+party_proportions %>%
+  kable() %>%
+  kable_styling()
+```
+
+Part 4 :
+
+```{r}
+assembly_composition <- MANDATES %>%
+  filter(YearStart <= year_max && YearEnd >= year_min) %>%
+  group_by(YearStart, Assembly) %>%
+  summarize(Count = n_distinct(PersonID))
+
+ggplot(assembly_composition, aes(x = YearStart, y = Count, color = Assembly)) +
+  geom_line() +
+  labs(title = "Composition of Assemblies Over the Years",
+       x = "Year",
+       y = "Number of Members") +
+  theme_minimal()
+```
+
+Part 5:
+```{r}
+with_title <- your_data %>%
+  filter(!is.na(YEAR_OF_DEATH) & !is.na(TITLE)) %>%
+  summarize(AvgLifeSpan = mean(YEAR_OF_DEATH - YEAR_OF_BIRTH))
+
+without_title <- your_data %>%
+  filter(!is.na(YEAR_OF_DEATH) & is.na(TITLE)) %>%
+  summarize(AvgLifeSpan = mean(YEAR_OF_DEATH - YEAR_OF_BIRTH))
+
+barplot(c(with_title$AvgLifeSpan, without_title$AvgLifeSpan),
+        names.arg = c("With Title", "Without Title"),
+        ylab = "Average Life Span",
+        col = "lightblue")
+
+t.test(with_title$AvgLifeSpan, without_title$AvgLifeSpan)
+
+```
+
+Part 6:
+
+```{r}
+born_before_1918 <- your_data %>%
+  filter(YEAR_OF_BIRTH < 1918)
+
+born_after_1918 <- your_data %>%
+  filter(YEAR_OF_BIRTH >= 1918)
+
+with_title_before_1918 <- born_before_1918 %>%
+  filter(!is.na(YEAR_OF_DEATH) & !is.na(TITLE)) %>%
+  summarize(AvgLifeSpan = mean(YEAR_OF_DEATH - YEAR_OF_BIRTH))
+
+without_title_before_1918 <- born_before_1918 %>%
+  filter(!is.na(YEAR_OF_DEATH) & is.na(TITLE)) %>%
+  summarize(AvgLifeSpan = mean(YEAR_OF_DEATH - YEAR_OF_BIRTH))
+
+with_title_after_1918 <- born_after_1918 %>%
+  filter(!is.na(YEAR_OF_DEATH) & !is.na(TITLE)) %>%
+  summarize(AvgLifeSpan = mean(YEAR_OF_DEATH - YEAR_OF_BIRTH))
+
+without_title_after_1918 <- born_after_1918 %>%
+  filter(!is.na(YEAR_OF_DEATH) & is.na(TITLE)) %>%
+  summarize(AvgLifeSpan = mean(YEAR_OF_DEATH - YEAR_OF_BIRTH))
+
+
+t.test(with_title_before_1918$AvgLifeSpan, without_title_before_1918$AvgLifeSpan)
+t.test(with_title_after_1918$AvgLifeSpan, without_title_after_1918$AvgLifeSpan)
+
+
+```
+Part 7: 
+
+```{r}
+mandate_counts <- MANDATES %>%
+  group_by(PersonID) %>%
+  summarize(MandateCount = n()) %>%
+  arrange(desc(MandateCount))
+
+top_10_politicians <- head(mandate_counts, 10)
+
+ggplot(top_10_politicians, aes(x = reorder(PersonID, -MandateCount), y = MandateCount)) +
+  geom_bar(stat = "identity", fill = "skyblue") +
+  labs(title = "Top 10 Politicians with Most Mandates",
+       x = "Politician",
+       y = "Number of Mandates") +
+  theme_minimal() +
+  coord_flip()
+```
+
+
+Part 8: Checking for Multiple Mandates at the Same Time
+
+To check if some politicians have multiple mandates at the same time
+
+Part 9: Politicians Affiliated to Different Parties Over the Years
+
+To determine if some politicians have been affiliated with different parties over the years
+
+Part 10: Plot Politicians' Addresses on a Map
+
+```{r}
+leaflet(data = your_data) %>%
+  addTiles() %>%
+  addMarkers(
+    lng = ~Longitude,
+    lat = ~Latitude,
+    popup = ~Name
+  )
+```
+
+

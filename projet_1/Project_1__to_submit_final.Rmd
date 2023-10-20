@@ -1,0 +1,291 @@
+---
+title: "FDS Final Project: Report #1"
+output: html_document
+---
+
+# libraries
+```{r}
+library(rvest)
+library(xml2)
+library(tidyverse)
+library(stringr)
+library(ggplot2)
+library(dplyr)
+library(infer)
+```
+
+
+# Part 1
+
+```{r}
+rental_url <- "https://epfl-exts.github.io/rental-scrape/"
+page <- read_html(rental_url)
+```
+
+
+
+```{r}
+location <- page %>% 
+  html_nodes(css=".sec-info .address p") %>%  
+  html_text()
+
+living_space <- page %>% 
+  html_nodes (css= ".sec-info .living-space p strong" ) %>% 
+  html_text()
+
+ floor <- page %>% 
+  html_nodes (css= ".floor strong" ) %>% 
+  html_text()
+
+Usable_surface <- page %>% 
+  html_nodes (css= ".sec-info .usable-surface p strong" ) %>% 
+  html_text()
+
+availability <- page %>% 
+  html_nodes(css=".availability p strong") %>%  
+  html_text()
+
+rooms <- page %>% 
+  html_nodes(css=".rooms strong") %>%  
+  html_text()
+
+price <- page %>% 
+  html_nodes(css=".price strong") %>%  
+  html_text()
+
+object_type <- page %>% 
+  html_nodes (css= ".object-type" ) %>% 
+  html_text()
+
+postcode <- str_extract(location, "\\d{4}")
+```
+
+#part 2
+
+```{r}
+rental_table <- tibble(location, living_space, floor, rooms, price, availability, Usable_surface, object_type, postcode)
+```
+
+
+# Part 2
+
+```{r}
+rental_table <- mutate(rental_table, 
+       living_space=str_remove_all(living_space,' m2') %>% as.numeric(),
+       price=as.numeric(price), 
+       floor=if_else(floor== 'Underground', "-1", floor)%>% as.numeric()) 
+```
+
+```{r}
+ggplot( rental_table, aes(x = living_space, y = price)) + geom_point()
+```
+
+
+# Part 3 
+
+
+```{r}
+rental_table <- rental_table %>% mutate(postcode= str_extract(location,"[:digit:]{4}"))  
+postcode_count <- rental_table %>% 
+  count(postcode, name = "num_properties") %>% 
+  mutate(postcode = fct_reorder(postcode, num_properties)) 
+
+ggplot(postcode_count, aes(x = reorder(postcode, -num_properties), y = num_properties)) +
+  geom_col() +
+  labs(title = "Number of Properties by Postcode",
+       x = "Postcode",
+       y = "Number of Properties") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) 
+
+```
+
+
+PART 4
+
+```{r}
+
+scatterplot <- ggplot(drop_na(rental_table,floor), aes(x = living_space, y = price))
+
+scatterplot <- scatterplot + geom_point(aes(color = postcode))
+
+scatterplot <- scatterplot + facet_wrap(~ floor, drop = FALSE)
+
+scatterplot <- scatterplot + labs(x = "Living Space", y = "Price", color = "Postcode")
+scatterplot <- scatterplot + ggtitle("Price Evolution by Living Space and floor")
+scatterplot
+``` 
+
+```{r}
+rental_summary <- rental_table %>% 
+  group_by(postcode, floor) %>% 
+  summarize(mean_price = mean(price, na.rm = TRUE))
+
+```
+
+Overall, the charts show similar trends, suggesting that the underground does not have a very significant impact on price. 
+However, the lack of data in some sub-charts makes it difficult to identify precise trends. For example, the graph for underground 50 is present, but it is empty because no living space is listed for the single apartment on that underground.
+
+#PART 5
+
+```{r}
+rental_table <- rental_table %>% 
+  mutate(available_on_demand = if_else(grepl("demande|request", location), "address on request", "address available"))
+
+ggplot(rental_table, aes(x = available_on_demand, y = price)) +
+  geom_boxplot() +
+  labs(title = "Comparison of Prices",
+       x = "Available on Demand",
+       y = "Price")
+
+ggplot(rental_table, aes(x = available_on_demand, y = living_space)) +
+  geom_boxplot() +
+  labs(title = "Comparison of Living Space",
+       x = "Available on Demand",
+       y = "Living Space (m2)")
+
+ggplot(rental_table, aes(x = available_on_demand, y = floor)) +
+  geom_boxplot() +
+  labs(title = "Comparison of Floor ",
+       x = "Available on Demand",
+       y = "Floor")
+
+```
+
+Analyzing the graphs, it appears that "Available on Demand" properties tend to have a higher average price. Addresses on requests are more expensive than the address available 
+
+# PART 6
+
+```{r}
+rental_table <- rental_table %>% mutate(price_per_sqm = price / living_space)
+
+
+
+```
+```{r}
+rental_table %>% 
+  group_by(available_on_demand) %>% 
+  summarise(group_size = n(),
+    median = median(price_per_sqm, na.rm = TRUE),
+    average = mean(price_per_sqm, na.rm = TRUE),
+    sd = sd(price_per_sqm, na.rm = TRUE),
+    minimum = min(price_per_sqm, na.rm = TRUE),
+    maximum = max(price_per_sqm, na.rm = TRUE))
+
+```
+```{r}
+rental_table %>% 
+  filter(price_per_sqm==2180)
+```
+```{r}
+rental_table %>% 
+  filter(price_per_sqm !=2180) %>% 
+  group_by(available_on_demand) %>% 
+  summarise(group_size = n(),
+    median = median(price_per_sqm, na.rm = TRUE),
+    average = mean(price_per_sqm, na.rm = TRUE),
+    sd = sd(price_per_sqm, na.rm = TRUE),
+    minimum = min(price_per_sqm, na.rm = TRUE),
+    maximum = max(price_per_sqm, na.rm = TRUE))
+```
+
+
+
+
+#Based on the summarised data, we can infer the following:
+
+#summary_on_demand: There are flats with their address only available on demand. 
+
+#summary_not_on_demand: For several flats that do not have their address only available on demand, the median price per square meter is slightly higher. 
+
+```{r}
+rental_table %>% 
+  filter(price_per_sqm !=2180) %>% 
+  t_test(price_per_sqm ~ available_on_demand)
+```
+
+
+
+```{r}
+summary_on_demand <- rental_table[rental_table$available_on_demand == TRUE, ]$price_per_sqm
+summary_not_on_demand <- rental_table[rental_table$available_on_demand == FALSE, ]$price_per_sqm
+
+t_test_result <- t.test(TRUE, FALSE)
+
+print(t_test_result)
+```
+
+
+#PART 7
+
+```{r}
+on_demand_price <- rental_table %>% filter(available_on_demand == TRUE)
+not_on_demand_price <- rental_table %>% filter(available_on_demand == FALSE)
+
+summary_on_demand_price <- on_demand_price %>% 
+  summarise(
+    group_size = n(),
+    median = median(price, na.rm = TRUE),
+    average = mean(price, na.rm = TRUE),
+    sd = sd(price, na.rm = TRUE),
+    minimum = min(price, na.rm = TRUE),
+    maximum = max(price, na.rm = TRUE)
+  )
+
+summary_not_on_demand_price <- not_on_demand_price %>% 
+  summarise(
+    group_size = n(),
+    median = median(price, na.rm = TRUE),
+    average = mean(price, na.rm = TRUE),
+    sd = sd(price, na.rm = TRUE),
+    minimum = min(price, na.rm = TRUE),
+    maximum = max(price, na.rm = TRUE)
+  )
+
+summary_table_price <- rbind(
+  cbind(data_group = "On Demand", summary_on_demand_price),
+  cbind(data_group = "Not On Demand", summary_not_on_demand_price)
+)
+
+```
+
+#Overall, it can be observed that apartments available on demand tend to have higher prices on average than those that are not
+
+```{r}
+on_demand_price <- rental_table[rental_table$Address on request == TRUE, ]$price
+not_on_demand_price <- rental_table[rental_table$available_on_demand == FALSE, ]$price
+
+t_test_result_price <- t.test(on_demand_price, not_on_demand_price)
+
+print(t_test_result_price)
+
+```
+
+Part 8
+
+```{r}
+register_google(key = "AIzaSyBzc8DZeDpjYWWnRe_cTO-C4kDJcMlLIQY")
+
+addresses <- sample(rental_table$location, 30, replace = TRUE)
+
+lat_lng_df <- data.frame()
+
+for (address in addresses) {
+  lat_lng <- geocode(address, output = "latlona", source = "google")
+  lat_lng_df <- rbind(lat_lng_df, lat_lng)
+}
+
+lat_lng_df <- na.omit(lat_lng_df)
+```
+
+
+
+```{r}
+map <- get_map(location = 'Geneva, Switzerland', zoom = 10)
+```
+```{r}
+ggmap(map) +
+  geom_point(data = lat_lng_df, aes(x = lon, y = lat), color = "red")
+```
+
+
+

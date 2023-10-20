@@ -1,0 +1,291 @@
+---
+title: "FDS Final Project: Report #4"
+output: html_document
+---
+
+```{r}
+library(dplyr)
+library(readxl)
+library(ggplot2)
+library(stringr)
+library(tidyr)
+library(rlang)
+
+```
+
+#Part1
+
+
+
+```{r}
+medals <- read_excel("olympics.xlsx", sheet = "medals")
+athletes <- read_excel("olympics.xlsx", sheet = "athletes")
+country <- read_excel("olympics.xlsx", sheet = "country")
+games <- read_excel("olympics.xlsx", sheet = "games")
+
+# Check if there are any athletes who competed for different countries over time
+athletes_with_multiple_countries <- medals %>%
+  group_by(athlete_id) %>%
+  summarise(Num_Country = n_distinct(Team), .groups = "drop") %>%
+  filter(Num_Country > 1)
+
+# Print the result
+print(athletes_with_multiple_countries)
+```
+
+Name 
+116, Hosni Mohamed Abbas
+193, Dorri Abdel Kader Said
+195, Mohamed Ali Abdel Kerim
+206, Amin Abdel Rahman
+211, Sameh Abdel Rahman
+359, Andrey Khakimovich Abduvaliyev
+360  Dzhamolidin Mirgarifanovich Abduzhaparov
+363  Kazumi Abe
+484  Abdel Fattah Abou-Shanab
+550  Dmitry Vladimirovich Abramovich
+
+
+
+
+
+#Part2
+
+```{r}
+top_athletes_by_games <- country %>%
+  group_by(athlete_id) %>%
+  summarise(Num_Games = n_distinct(Games), .groups = "drop") %>%
+  arrange(desc(Num_Games)) %>%
+  slice_head(n = 10)
+
+print(top_athletes_by_games)
+```
+
+Name
+
+79855	Ian Millar			
+65378	Afanasijs Kuzmins			
+99155	Hubert Raudaschl			
+14388	Stefania Stanzani			
+26880	Rajmond Debevec			
+28051	Piero D'Inzeo			
+28052	Raimondo D'Inzeo			
+32458	Paul Bert Elvstrm			
+51618	Josefa Idem-Guerrini			
+61572	Durward Randolph Knowles
+
+Part 3: What athlete(s) kept a Gold medal for the longest time?
+
+```{r}
+
+gold_medal_winners <- medals %>%
+  filter(Medal == "Gold")
+
+gold_medal_winners$Year <- as.integer(str_extract(gold_medal_winners$Games, "\\d+"))
+
+gold_medal_winners <- gold_medal_winners %>%
+  arrange(athlete_id, Event, Year)
+
+gold_medal_winners <- gold_medal_winners %>%
+  group_by(athlete_id, Event) %>%
+  mutate(consecutive_wins = c(0, diff(Year) == 4))
+
+gold_medal_winners <- gold_medal_winners %>%
+  group_by(athlete_id, Event) %>%
+  mutate(streak = cumsum(consecutive_wins))
+
+max_streaks <- gold_medal_winners %>%
+  group_by(athlete_id, Event) %>%
+  summarise(max_streak = max(streak), .groups = "drop")
+
+longest_streaks <- max_streaks %>%
+  arrange(desc(max_streak)) %>%
+  slice_head(n = 10)
+
+print(longest_streaks)
+
+```
+Name 
+
+39726	 Aladr Gerevich (-Gerei)
+11671	 Ossian Esaias Skild
+19044	 David Toivo Teivonen
+32458	 Paul Bert Elvstrm
+47137	 Jayna Hefford
+57699	 Rudolf Krpti
+63409	Pl dm Kovcs
+68985 Lisa Deshawn Leslie (-Lockwood)	
+69210	Frederick Carlton "Carl" Lewis
+70965 Ryan Steven Lochte
+
+Part 4: What country(ies) kept a Gold medal for the longest time?
+
+```{r}
+
+gold_medal_winners <- medals %>%
+  filter(Medal == "Gold")
+
+gold_medal_winners$Year <- as.integer(str_extract(gold_medal_winners$Games, "\\d+"))
+
+gold_medal_winners <- gold_medal_winners %>%
+  arrange(Team, Event, Year)
+
+gold_medal_winners <- gold_medal_winners %>%
+  group_by(Team, Event) %>%
+  mutate(consecutive_wins = c(0, diff(Year) == 4))
+
+gold_medal_winners <- gold_medal_winners %>%
+  group_by(Team, Event) %>%
+  mutate(streak = cumsum(consecutive_wins))
+
+max_streaks <- gold_medal_winners %>%
+  group_by(Team, Event) %>%
+  summarise(max_streak = max(streak), .groups = "drop")
+
+longest_streaks <- max_streaks %>%
+  arrange(desc(max_streak)) %>%
+  slice_head(n = 10)
+
+print(longest_streaks)
+
+```
+
+Part 5: Who are the ten athletes that competed in the most events?
+
+
+# Get the ten athletes who competed in the most events
+
+```{r}
+top_athletes_by_events <- medals %>%
+  group_by(athlete_id) %>%
+  summarise(Num_Events = n_distinct(Event), .groups = "drop") %>%
+  arrange(desc(Num_Events)) %>%
+  slice_head(n = 10)
+
+print(top_athletes_by_events)
+
+```
+
+Part 6: Create a new table showing the number of medals per country and per year
+
+```{r}
+medals$Year <- as.integer(str_extract(medals$Games, "\\d+"))
+
+medals_by_country_year <- medals %>%
+  group_by(Team, Year) %>%
+  summarise(Num_Medals = n(), .groups = "drop")
+
+top_countries <- medals_by_country_year %>%
+  group_by(Team) %>%
+  summarise(Total_Medals = sum(Num_Medals), .groups = "drop") %>%
+  arrange(desc(Total_Medals)) %>%
+  slice_head(n = 15) %>%
+  pull(Team)
+
+
+medals_by_country_year <- medals_by_country_year %>%
+  filter(Team %in% top_countries)
+
+
+medals_by_country_year_wide <- medals_by_country_year %>%
+  pivot_wider(names_from = Year, values_from = Num_Medals, values_fill = 0)
+
+print()
+print.default()
+
+```
+
+
+Part 7: Is there a relationship between country and the probability of winning a medal?
+
+```{r}
+
+
+medals_participated <- medals %>%
+  filter(Team %in% top_countries) %>%
+  group_by(Team) %>%
+  summarise(Total_Medals_Won = n(),
+            Total_Events_Participated = n_distinct(Event),
+            .groups = "drop")
+
+medals_participated$Percentage_Medals_Won <- medals_participated$Total_Medals_Won / medals_participated$Total_Events_Participated * 100
+
+ggplot(medals_participated, aes(x = reorder(Team, Percentage_Medals_Won), y = Percentage_Medals_Won)) +
+  geom_bar(stat = "identity") +
+  coord_flip() +
+  labs(x = "Country", y = "Percentage of Medals Won", title = "Percentage of Medals Won out of All Medals Competed for by Country")
+
+```
+#Based on your observation, it seems that countries such as the USA, UK, France, Italy, and Japan have significantly larger bars compared to countries like Switzerland or Finland. This suggests that athletes from the former group of countries win a higher proportion of medals compared to the total number of events they compete in.
+
+```{r}
+medals$Medal_Won <- ifelse(!is.na(medals$Medal), "Yes", "No")
+
+medals_top_countries <- medals %>%
+  filter(Team %in% top_countries)
+
+contingency_table <- table(medals_top_countries$Team, medals_top_countries$Medal_Won)
+
+chi_square_test <- chisq.test(contingency_table)
+
+print(chi_square_test)
+
+```
+#
+
+
+Part 8: Create a scatterplot showing the average height versus the average weight of competitors per sport
+```{r}
+
+
+athletes_medals <- athletes %>%
+  left_join(medals, by = c("ID" = "athlete_id"))
+
+average_stats_per_sport <- athletes_medals %>%
+  group_by(Sport) %>%
+  summarise(Average_Height = mean(Height / 100, na.rm = TRUE),  # Convert height to meters
+            Average_Weight = mean(Weight, na.rm = TRUE),
+            Average_BMI = mean(Weight / (Height / 100)^2, na.rm = TRUE),
+            .groups = "drop")
+
+labels <- average_stats_per_sport %>%
+  summarise(Largest_Height_Sport = Sport[which.max(Average_Height)],
+            Largest_Weight_Sport = Sport[which.max(Average_Weight)],
+            Smallest_Height_Sport = Sport[which.min(Average_Height)],
+            Smallest_Weight_Sport = Sport[which.min(Average_Weight)],
+            Largest_BMI_Sport = Sport[which.max(Average_BMI)],
+            Smallest_BMI_Sport = Sport[which.min(Average_BMI)])
+
+ggplot(average_stats_per_sport, aes(x = Average_Height, y = Average_Weight)) +
+  geom_point() +
+  geom_text(data = subset(average_stats_per_sport, Sport %in% unlist(labels)), aes(label = Sport), hjust = -0.1, vjust = -0.1) +
+  labs(x = "Average Height (m)", y = "Average Weight (kg)", title = "Average Height vs Average Weight by Sport")
+
+```
+
+
+Part 9: Create a line plot showing the number of medals given by year
+
+```{r}
+
+medals_games <- medals %>%
+  left_join(games, by = "Games")
+
+medals_by_year <- medals_games %>%
+  filter(!is.na(Medal)) %>%
+  group_by(Year.x, Medal, Season) %>%
+  summarise(Num_Medals = n(),
+            .groups = "drop")
+
+ggplot(medals_by_year, aes(x = Year.x, y = Num_Medals, color = Medal)) +
+  geom_line() +
+  facet_grid(Season ~ .) +
+  labs(x = "Year", y = "Number of Medals",
+       color = "Medal Type",
+       title = "Number of Medals by Year and Medal Type",
+       subtitle = "Faceted by Season (Summer or Winter Games)")
+
+```
+
+
+

@@ -1,0 +1,192 @@
+---
+title: "FDS Final Project: Report #3"
+output: html_document    
+---
+#PART 1   
+
+- What are the highest grossing dramas from 2010?
+- Have Will Ferrell and Liam Neeson even been in a movie together?
+- Can you find kids movies with Tom Cruise in it?
+
+```{r}
+library(httr)
+library(dplyr)
+library(purrr)
+library(ggplot2)
+library(jsonlite)
+```
+
+```{r}
+make_api_request <- function(url) {
+  response <- GET(url)
+  stop_for_status(response)
+  content(response, as = "parsed")
+}
+
+convert_to_tibble <- function(result) {
+  as_tibble(result)
+}
+
+
+print_movie_titles <- function(result) {
+  if ("results" %in% names(result)) {
+    movies <- result$results
+    if (length(movies) > 0) {
+      cat("Movie Titles:\n")
+      for (movie in movies) {
+        cat(movie$title, "\n")
+      }
+    } else {
+      cat("No movies found.\n")
+    }
+  } else {
+    cat("Invalid response format.\n")
+  }
+  cat("\n")
+}
+
+base_url <- "https://api.themoviedb.org/3/search/movie"
+
+
+api_key <- "197aac93c3e105765e64e0d49c5faad2"
+
+queries <- list(
+  "highest_grossing_dramas_2010" = list(query = "drama", year = "2010"),
+  "will_ferrell_liam_neeson_movie" = list(query = "Will Ferrell Liam Neeson"),
+  "kids_movies_with_tom_cruise" = list(query = "kids", actor = "Tom Cruise")
+)
+
+
+for (query_name in names(queries)) {
+  query_params <- queries[[query_name]]
+  
+ 
+  full_url <- modify_url(base_url, query = c(query_params, api_key = api_key))
+  
+  cat("Query:", query_name, "\n")
+  cat("URL:", full_url, "\n")
+  
+  result <- make_api_request(full_url)
+  print_movie_titles(result)
+}
+```
+
+
+
+#Part 2 From `RStudio`, what query would you make to find the id of the animation movie company "Pixar"? 
+Show both the query and how you extract the id from the result in your report.
+
+
+```{r}
+query <- "Pixar"
+
+full_url <- modify_url(base_url, query = list(query = query, api_key = api_key))
+result <- make_api_request(full_url)
+
+if ("results" %in% names(result) && length(result$results) > 0) {
+  pixar_id <- result$results[[1]]$id
+  cat("Company 'Pixar' has the following id:", pixar_id, "\n")
+} else {
+  cat("Company 'Pixar' not found.\n")
+}
+```
+#PART 3 
+Finding all Pixar movies and sorting by revenue
+
+```{r}
+query_params <- list(
+  with_companies = "Pixar Animation Studios",
+  sort_by = "revenue.desc",
+  api_key = "197aac93c3e105765e64e0d49c5faad2"
+)
+
+full_url <- modify_url(base_url, query = query_params)
+result <- make_api_request(full_url)
+
+total_pages <- result$total_pages
+
+movies <- as_tibble(result$results)
+
+print(movies)
+
+
+movies <- as_tibble(result)
+
+
+all_movies <- map_df(2:total_pages, function(page) {
+  query_params$page <- page
+  full_url <- modify_url(base_url, query = query_params)
+  response <- make_api_request(full_url)
+  convert_to_tibble(response)
+})
+
+
+print(all_movies)
+```
+
+#PART 4 
+
+
+```{r}
+make_api_request <- function(url) {
+  response <- GET(url)
+  stop_for_status(response)
+  content(response, as = "parsed")
+}
+
+filter_popular_films <- function(films) {
+  films %>%
+    filter(vote_count >= 50)
+}
+
+base_url <- "https://api.themoviedb.org/3"
+
+api_key <- "197aac93c3e105765e64e0d49c5faad2"
+
+query <- "Walt Disney Pictures"
+query_params <- list(query = query, api_key = api_key)
+company_search_url <- modify_url(paste0(base_url, "/search/company"), query = query_params)
+
+company_search_result <- make_api_request(company_search_url)
+
+disney_company_id <- company_search_result$results %>%
+  filter(name == "Walt Disney Pictures" & origin_country == "US") %>%
+  select(id) %>%
+  pull()
+
+disney_query_params <- list(
+  with_companies = disney_company_id,
+  primary_release_date_gte = "2006-01-01",
+  api_key = api_key
+)
+disney_movies_url <- modify_url(paste0(base_url, "/discover/movie"), query = disney_query_params)
+
+pixar_query_params <- list(
+  with_companies = "3",  # Pixar company ID is 3
+  primary_release_date_gte = "2006-01-01",
+  api_key = api_key
+)
+pixar_movies_url <- modify_url(paste0(base_url, "/discover/movie"), query = pixar_query_params)
+
+disney_movies_result <- make_api_request(disney_movies_url)
+pixar_movies_result <- make_api_request(pixar_movies_url)
+
+disney_movies <- filter_popular_films(disney_movies_result$results)
+pixar_movies <- filter_popular_films(pixar_movies_result$results)
+
+comparison_data <- rbind(
+  data.frame(Company = "Disney", Vote_Average = disney_movies$vote_average),
+  data.frame(Company = "Pixar", Vote_Average = pixar_movies$vote_average)
+)
+
+
+ggplot(comparison_data, aes(x = Company, y = Vote_Average)) +
+  geom_boxplot() +
+  labs(x = "Company", y = "Vote Average", title = "Comparison of Vote Averages: Disney vs. Pixar")
+
+
+t_test_result <- t.test(Vote_Average ~ Company, data = comparison_data)
+cat("\nT-Test Results:\n")
+print(t_test_result)
+```
+
