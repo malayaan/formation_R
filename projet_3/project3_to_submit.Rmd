@@ -141,7 +141,7 @@ filter_popular_films <- function(films) {
 
 base_url <- "https://api.themoviedb.org/3"
 
-api_key <- "197aac93c3e105765e64e0d49c5faad2"
+api_key <- ""
 
 query <- "Walt Disney Pictures"
 query_params <- list(query = query, api_key = api_key)
